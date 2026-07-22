@@ -1,8 +1,9 @@
 import os
 import sys
 import logging
+import time
 from datetime import datetime
-import yfinance as yf  # 需安装 yfinance，添加到requirements
+import yfinance as yf
 from collector import collect_all_news
 from analyzer import generate_report
 from pusher import send_to_pushplus
@@ -21,16 +22,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def get_index_data():
-    """获取纳指100（QQQ）的收盘价和涨跌幅"""
-    qqq = yf.Ticker("QQQ")
-    hist = qqq.history(period="2d")  # 获取最近两个交易日
-    if len(hist) < 2:
-        raise ValueError("Not enough historical data for QQQ")
-    # 最新收盘价和前一交易日收盘价
-    today_close = hist['Close'].iloc[-1]
-    yesterday_close = hist['Close'].iloc[-2]
-    change_pct = (today_close - yesterday_close) / yesterday_close * 100
-    return change_pct, today_close
+    """
+    获取纳斯达克100指数（优先 ^NDX，备选 QQQ）的收盘价和涨跌幅。
+    自动重试最多3次，并处理周末/假日导致的数据不足问题。
+    """
+    symbols = ["^NDX", "QQQ"]
+    for symbol in symbols:
+        for attempt in range(3):
+            try:
+                data = yf.download(symbol, period="5d", progress=False, threads=False)
+                if data.empty:
+                    raise ValueError(f"No data returned for {symbol}")
+                
+                close_prices = data['Close'].dropna()
+                if len(close_prices) < 2:
+                    raise ValueError(f"Less than 2 close prices for {symbol}")
+                
+                today_close = close_prices.iloc[-1]
+                yesterday_close = close_prices.iloc[-2]
+                change_pct = (today_close - yesterday_close) / yesterday_close * 100
+                logger.info(f"Fetched {symbol}: {today_close:.2f} ({change_pct:+.2f}%)")
+                return change_pct, today_close
+            
+            except Exception as e:
+                logger.warning(f"Attempt {attempt+1} for {symbol} failed: {e}")
+                time.sleep(2)
+        
+        logger.warning(f"All attempts failed for {symbol}, trying next symbol...")
+    
+    raise RuntimeError("Failed to fetch index data from all symbols after retries")
 
 def main():
     try:
@@ -38,7 +58,6 @@ def main():
         
         # 1. 获取指数数据
         index_change, index_close = get_index_data()
-        logger.info(f"QQQ: {index_close:.2f} ({index_change:+.2f}%)")
         
         # 2. 收集新闻
         news_list = collect_all_news()
