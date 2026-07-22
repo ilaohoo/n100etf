@@ -4,11 +4,12 @@ on:
   schedule:
     # UTC 00:00 = 北京时间 08:00
     - cron: '0 0 * * *'
-  workflow_dispatch:   # 允许手动触发
+  workflow_dispatch:   # 允许手动触发，方便调试
 
 jobs:
   run-report:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,9 +18,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          
+      - name: Upgrade pip and display environment
+        run: |
+          python -m pip install --upgrade pip
+          python --version
+          pip --version
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies with verification
+        run: |
+          echo "=== Checking requirements.txt content ==="
+          cat requirements.txt
+          echo "=========================================="
+          
+          # 安装依赖
+          pip install -r requirements.txt
+          
+          # 逐项验证关键包是否安装成功（包含你报错的 yfinance）
+          echo "=== Verifying installations ==="
+          python -c "import requests; print('✅ requests OK')"
+          python -c "import feedparser; print('✅ feedparser OK')"
+          python -c "import yaml; print('✅ yaml OK')"
+          python -c "import yfinance as yf; print('✅ yfinance OK, version:', yf.__version__)"
+          echo "================================"
 
       - name: Run main script
         env:
@@ -27,7 +48,7 @@ jobs:
           PUSHPULUS_TOKEN: ${{ secrets.PUSHPULUS_TOKEN }}
         run: python src/main.py
 
-      - name: Upload logs (if needed)
+      - name: Upload logs (always, even on failure)
         uses: actions/upload-artifact@v4
         if: always()
         with:
