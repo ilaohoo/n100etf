@@ -1,0 +1,64 @@
+# 前50权重股列表（截至2026年7月，基于QQQ持仓权重，按代码排序）
+tickers:
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - META
+  - GOOGL
+  - GOOG
+  - AVGO
+  - TSLA
+  - JPM
+  - V
+  - UNH
+  - XOM
+  - JNJ
+  - PG
+  - HD
+  - COST
+  - MA
+  - BAC
+  - PFE
+  - TMO
+  - ABBV
+  - MRK
+  - DIS
+  - KO
+  - PEP
+  - NKE
+  - WMT
+  - CVX
+  - MCD
+  - ABT
+  - LIN
+  - ACN
+  - CMCSA
+  - CRM
+  - AMD
+  - INTC
+  - QCOM
+  - TXN
+  - AMAT
+  - LRCX
+  - INTU
+  - ADBE
+  - SYK
+  - ISRG
+  - BKNG
+  - ZTS
+  - MDT
+  - BIIB
+  - GILD
+
+# RSS 新闻源配置（使用 Google News RSS，备选可换成 RSSHub）
+rss_template: "https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
+# 如果谷歌新闻被封，可换成 rsshub 路由（例如 https://rsshub.app/finance/quote/{symbol}/news ）
+# 但需要确保网络畅通。
+
+# DeepSeek 参数
+deepseek_model: "deepseek-chat"
+max_news_per_ticker: 3   # 每个股票最多取最近3条新闻，避免token爆满
+
+# PushPlus 推送参数
+pushplus_url: "https://www.pushplus.plus/api/send"
