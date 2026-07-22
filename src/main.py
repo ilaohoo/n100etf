@@ -3,7 +3,7 @@ import sys
 import logging
 import time
 from datetime import datetime
-import yfinance as yf
+import requests
 from collector import collect_all_news
 from analyzer import generate_report
 from pusher import send_to_pushplus
@@ -22,52 +22,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def get_index_data():
-    """
-    获取纳斯达克100指数（优先 ^NDX，备选 QQQ）的收盘价和涨跌幅。
-    自动重试最多3次，并处理周末/假日导致的数据不足问题。
-    """
     symbols = ["^NDX", "QQQ"]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
     for symbol in symbols:
         for attempt in range(3):
             try:
-                data = yf.download(symbol, period="5d", progress=False, threads=False)
-                if data.empty:
-                    raise ValueError(f"No data returned for {symbol}")
-                
-                close_prices = data['Close'].dropna()
-                if len(close_prices) < 2:
-                    raise ValueError(f"Less than 2 close prices for {symbol}")
-                
-                today_close = close_prices.iloc[-1]
-                yesterday_close = close_prices.iloc[-2]
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                resp = requests.get(url, headers=headers, timeout=10)
+                if resp.status_code != 200:
+                    raise ValueError(f"HTTP {resp.status_code}")
+                data = resp.json()
+                result = data.get('chart', {}).get('result')
+                if not result:
+                    raise ValueError("No result in response")
+                quote = result[0]
+                close_prices = quote.get('indicators', {}).get('quote', [{}])[0].get('close', [])
+                if not close_prices or len(close_prices) < 2:
+                    raise ValueError("Not enough close prices")
+                closes = [c for c in close_prices if c is not None]
+                if len(closes) < 2:
+                    raise ValueError("Less than 2 valid close prices")
+                today_close = closes[-1]
+                yesterday_close = closes[-2]
                 change_pct = (today_close - yesterday_close) / yesterday_close * 100
                 logger.info(f"Fetched {symbol}: {today_close:.2f} ({change_pct:+.2f}%)")
                 return change_pct, today_close
-            
             except Exception as e:
                 logger.warning(f"Attempt {attempt+1} for {symbol} failed: {e}")
                 time.sleep(2)
-        
         logger.warning(f"All attempts failed for {symbol}, trying next symbol...")
-    
     raise RuntimeError("Failed to fetch index data from all symbols after retries")
 
 def main():
     try:
         logger.info("=== Starting NASDAQ-100 daily report ===")
-        
-        # 1. 获取指数数据
         index_change, index_close = get_index_data()
-        
-        # 2. 收集新闻
         news_list = collect_all_news()
         if not news_list:
             logger.warning("No news collected, but continuing with empty list.")
-        
-        # 3. 生成 AI 报告
         report = generate_report(news_list, index_change, index_close)
-        
-        # 4. 推送
         title = f"纳指100复盘 {datetime.now().strftime('%Y-%m-%d')}"
         success = send_to_pushplus(title, report)
         if success:
@@ -75,7 +72,6 @@ def main():
         else:
             logger.error("Failed to send report via PushPlus.")
             sys.exit(1)
-            
     except Exception as e:
         logger.exception("Fatal error in main workflow")
         sys.exit(1)
